@@ -671,7 +671,8 @@ class LineProfiler(object):
         if func is not None:
             self.add_function(func)
             f = self.wrap_function(func)
-            f.__module__ = func.__module__
+            if hasattr(func, "__module__"):
+                f.__module__ = func.__module__
             f.__name__ = func.__name__
             f.__doc__ = func.__doc__
             f.__dict__.update(getattr(func, '__dict__', {}))
@@ -889,6 +890,8 @@ class MemoryProfilerMagics(Magics):
         -r: return the LineProfiler object after it has completed profiling.
 
         -c: If present, add the memory usage of any children process to the report.
+
+        -m: Max memory usage in MiB. If not none, if the process exceeds this threshold, launch the debugger.
         """
         from io import StringIO
         from memory_profiler import show_results, LineProfiler
@@ -907,16 +910,22 @@ class MemoryProfilerMagics(Magics):
             from IPython.core.error import UsageError
 
         # Escape quote markers.
-        opts_def = Struct(T=[''], f=[])
+        opts_def = Struct(m=[0], T=[''], f=[])
         parameter_s = parameter_s.replace('"', r'\"').replace("'", r"\'")
-        opts, arg_str = self.parse_options(parameter_s, 'rf:T:c',
+        opts, arg_str = self.parse_options(parameter_s, 'rf:T:m:c',
                                            list_all=True)
+        print(opts, arg_str)
+
         opts.merge(opts_def)
         global_ns = self.shell.user_global_ns
         local_ns = self.shell.user_ns
 
         if cell is not None:
             arg_str += '\n' + cell
+
+        max_mem = int(opts.m[0]) if opts.m is not None else None
+        if max_mem <= 0:
+            raise ValueError(f"Maximum memory must be positive.")
 
         # Get the requested functions.
         funcs = []
@@ -929,7 +938,7 @@ class MemoryProfilerMagics(Magics):
                                                                           e))
 
         include_children = 'c' in opts
-        profile = LineProfiler(include_children=include_children)
+        profile = LineProfiler(include_children=include_children, max_mem=max_mem)
         for func in funcs:
             profile(func)
 
